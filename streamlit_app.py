@@ -4,6 +4,21 @@ import os
 import numpy as np
 import re
 
+st.set_page_config(layout="wide", page_title="Image Comparison: Original vs Skip Layers")
+
+# Add this custom CSS to set a max-width
+st.markdown("""
+    <style>
+    .reportview-container .main .block-container {
+        max-width: 800px;
+        padding-top: 5rem;
+        padding-right: 1rem;
+        padding-left: 1rem;
+        padding-bottom: 5rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 def load_image(image_path):
     if os.path.exists(image_path):
         return Image.open(image_path)
@@ -30,6 +45,41 @@ def get_images(folder_path):
 
 def main():
     st.title("Image Comparison: Original vs Skip Layers")
+
+    # Add information about skipped layers at the beginning
+    st.header("Flux Dev comparison")
+    st.write("""
+    Maybe overkill to compare images to before and after skipping layers.
+    The layers were skipped using the following edit from the diffusers repository:
+    """)
+    
+    st.code('''
+def apply_skip_blocks(transformer, skip_blocks, skip_single_blocks):
+    # Remove specified transformer blocks
+    transformer.transformer_blocks = torch.nn.ModuleList(
+        [block for i, block in enumerate(transformer.transformer_blocks) if i not in skip_blocks]
+    )
+    
+    # Remove specified single transformer blocks
+    transformer.single_transformer_blocks = torch.nn.ModuleList(
+        [block for i, block in enumerate(transformer.single_transformer_blocks) if i not in skip_single_blocks]
+    )
+    
+    return transformer
+    ''', language='python')
+
+    st.write("This function allows skipping both double blocks and single blocks in the transformer. However, the results are not on single blocks.")
+
+    # Add prompt and generation information
+    st.subheader("Image Generation Details")
+    prompt = "A beautiful landscape with mountains and a lake"
+    guidance = 3.5
+    seed = 12345
+    st.write(f"Prompt: '{prompt}'")
+    st.write(f"Guidance Scale: {guidance}")
+    st.write(f"Seed: {seed}")
+
+    st.markdown("---")  # Add a horizontal line for separation
 
     folder_path = os.path.join(os.getcwd(), 'images')
     original_image_path = os.path.join(folder_path, 'image_original.png')
@@ -58,11 +108,13 @@ def main():
                 with col2:
                     st.image(img_skip, use_column_width=True, caption=f"Skip: {selected_skip}")
 
-                # Image difference
+
                 st.subheader("Image Difference")
                 diff_img = compute_difference(img_original, img_skip)
                 if diff_img:
-                    st.image(diff_img, use_column_width=True, caption="Difference")
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col2:
+                        st.image(diff_img, use_column_width=True, caption="Difference")
 
                     # Compute and display difference statistics
                     diff_array = np.array(diff_img)
@@ -72,11 +124,12 @@ def main():
                     st.write(f"Max difference: {max_diff}")
 
                     # Histogram of differences
-                    st.subheader("Histogram of Differences")
+                    st.subheader("Histogram of Differences (need to improve on this eval)")
                     hist_values, hist_bins = np.histogram(diff_array.flatten(), bins=50, range=(0, 255))
                     st.bar_chart(hist_values)
                     st.write("X-axis: Difference value (0-255)")
                     st.write("Y-axis: Frequency")
+
         else:
             st.warning("No skip layer images found in the 'images' folder.")
     else:
