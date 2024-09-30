@@ -3,6 +3,7 @@ from PIL import Image
 import os
 import numpy as np
 import re
+import pandas as pd
 
 st.set_page_config(layout="wide", page_title="Image Comparison: Original vs Skip Layers")
 
@@ -37,6 +38,13 @@ def compute_difference(img1, img2):
             r2, g2, b2 = img2.getpixel((x, y))
             diff.putpixel((x, y), (abs(r1-r2), abs(g1-g2), abs(b1-b2)))
     return diff
+
+def compute_mean_difference(img1, img2):
+    if img1.size != img2.size:
+        return None
+    
+    diff = np.array(img1) - np.array(img2)
+    return np.mean(np.abs(diff))
 
 def get_images(folder_path):
     images = [f for f in os.listdir(folder_path) if f.endswith(('.png', '.jpg', '.jpeg'))]
@@ -95,40 +103,68 @@ def apply_skip_blocks(transformer, skip_blocks, skip_single_blocks):
         images = [img for img in images if img != 'image_original.png']
 
         if images:
-            st.subheader("Select Skip Layer Image")
-            selected_skip = st.selectbox("Choose a skip layer image:", images)
-            img_skip = load_image(os.path.join(folder_path, selected_skip))
+            if 'image_differences' not in st.session_state:
+                image_differences = []
+                for image_name in images:
+                    img_skip = load_image(os.path.join(folder_path, image_name))
+                    if img_skip:
+                        mean_diff = compute_mean_difference(img_original, img_skip)
+                        if mean_diff is not None:
+                            image_differences.append((image_name, mean_diff))
+                image_differences.sort(key=lambda x: x[1])
+                st.session_state.image_differences = image_differences
+            selected_skip = st.selectbox("Choose a skip layer image:", 
+                                         [img[0] for img in st.session_state.image_differences])
+            if st.button("Show Comparison"):
+                img_skip = load_image(os.path.join(folder_path, selected_skip))
 
-            if img_skip:
-                # Side-by-side comparison of original and selected skip layer image
-                st.subheader("Original vs Skip Layer Image")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.image(img_original, use_column_width=True, caption="Original")
-                with col2:
-                    st.image(img_skip, use_column_width=True, caption=f"Skip: {selected_skip}")
-
-
-                st.subheader("Image Difference")
-                diff_img = compute_difference(img_original, img_skip)
-                if diff_img:
-                    col1, col2, col3 = st.columns([1, 2, 1])
+                if img_skip:
+                    st.subheader("Original vs Skip Layer Image")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.image(img_original, use_column_width=True, caption="Original")
                     with col2:
-                        st.image(diff_img, use_column_width=True, caption="Difference")
+                        st.image(img_skip, use_column_width=True, caption=f"Skip: {selected_skip}")
 
-                    # Compute and display difference statistics
-                    diff_array = np.array(diff_img)
-                    mean_diff = np.mean(diff_array)
-                    max_diff = np.max(diff_array)
-                    st.write(f"Mean difference: {mean_diff:.2f}")
-                    st.write(f"Max difference: {max_diff}")
+                    st.subheader("Image Difference")
+                    diff_img = compute_difference(img_original, img_skip)
+                    if diff_img:
+                        col1, col2, col3 = st.columns([1, 2, 1])
+                        with col2:
+                            st.image(diff_img, use_column_width=True, caption="Difference")
 
-                    # Histogram of differences
-                    st.subheader("Histogram of Differences (need to improve on this eval)")
-                    hist_values, hist_bins = np.histogram(diff_array.flatten(), bins=50, range=(0, 255))
-                    st.bar_chart(hist_values)
-                    st.write("X-axis: Difference value (0-255)")
-                    st.write("Y-axis: Frequency")
+                        # Compute and display difference statistics
+                        diff_array = np.array(diff_img)
+                        mean_diff = np.mean(diff_array)
+                        max_diff = np.max(diff_array)
+                        st.write(f"Mean difference: {mean_diff:.2f}")
+                        st.write(f"Max difference: {max_diff}")
+
+                        # Histogram of differences
+                        st.subheader("Histogram of Differences (need to improve on this eval)")
+                        hist_values, hist_bins = np.histogram(diff_array.flatten(), bins=50, range=(0, 255))
+                        st.bar_chart(hist_values)
+                        st.write("X-axis: Difference value (0-255)")
+                        st.write("Y-axis: Frequency")
+
+            st.markdown("---")
+            if st.button("Show/Hide All Skip Layer Combinations"):
+                with st.expander("All Skip Layer Combinations (Sorted by Difference)", expanded=True):
+                    st.code('''
+                    def compute_mean_difference(img1, img2):
+                        if img1.size != img2.size:
+                            return None
+                        
+                        diff = np.array(img1) - np.array(img2)
+                        return np.mean(np.abs(diff))
+                    ''', language='python')
+                    table_data = []
+                    for image_name, mean_diff in st.session_state.image_differences:
+                        skipped_layers = re.findall(r'\d+', image_name)
+                        layers_str = ", ".join(skipped_layers)
+                        table_data.append({"Layers Skipped": layers_str, "Mean Difference": f"{mean_diff:.2f}"})
+                    df = pd.DataFrame(table_data)
+                    st.table(df)
 
         else:
             st.warning("No skip layer images found in the 'images' folder.")
