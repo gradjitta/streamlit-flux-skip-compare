@@ -49,7 +49,7 @@ def main():
     # Add information about skipped layers at the beginning
     st.header("Flux Dev comparison")
     st.write("""
-    Maybe overkill to compare images to before and after skipping layers.
+    Maybe this app is an overkill. Ideally want to have a place to compare results of different experiments.
     The layers were skipped using the following edit from the diffusers repository:
     """)
     
